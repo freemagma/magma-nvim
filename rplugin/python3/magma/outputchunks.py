@@ -5,9 +5,9 @@ from math import floor
 import re
 import textwrap
 
-from magma.images  import Canvas
+from magma.images import Canvas
 from magma.options import MagmaOptions
-from magma.utils   import get_pty
+from magma.utils import get_pty
 
 
 class OutputChunk(ABC):
@@ -15,7 +15,13 @@ class OutputChunk(ABC):
     jupyter_metadata: Optional[dict] = None
 
     @abstractmethod
-    def place(self, options: MagmaOptions, lineno: int, shape: Tuple[int, int, int, int], canvas: Canvas) -> str:
+    def place(
+        self,
+        options: MagmaOptions,
+        lineno: int,
+        shape: Tuple[int, int, int, int],
+        canvas: Canvas,
+    ) -> str:
         pass
 
 
@@ -23,22 +29,27 @@ class TextOutputChunk(OutputChunk):
     text: str
 
     # Adapted from [https://stackoverflow.com/a/14693789/4803382]:
-    ANSI_CODE_REGEX = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    ANSI_CODE_REGEX = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
     def __init__(self, text: str):
         self.text = text
 
     def _cleanup_text(self, text: str) -> str:
         # Adapted from [https://stackoverflow.com/a/14693789/4803382]:
-        text = self.ANSI_CODE_REGEX.sub('', text)
+        text = self.ANSI_CODE_REGEX.sub("", text)
         text = text.replace("\r\n", "\n")
         return text
 
-    def place(self, options: MagmaOptions, _, shape: Tuple[int, int, int, int], __) -> str:
+    def place(
+        self, options: MagmaOptions, _, shape: Tuple[int, int, int, int], __
+    ) -> str:
         text = self._cleanup_text(self.text)
         if options.wrap_output:
             win_width = shape[2]
-            text = "\n".join("\n".join(textwrap.wrap(line, width=win_width)) for line in text.split("\n"))
+            text = "\n".join(
+                "\n".join(textwrap.wrap(line, width=win_width))
+                for line in text.split("\n")
+            )
         return text
 
 
@@ -59,13 +70,15 @@ class MimetypesOutputChunk(TextLnOutputChunk):
 
 class ErrorOutputChunk(TextLnOutputChunk):
     def __init__(self, name: str, message: str, traceback: List[str]):
-        super().__init__("\n".join(
-            [
-                f"[Error] {name}: {message}",
-                f"Traceback:",
-            ]
+        super().__init__(
+            "\n".join(
+                [
+                    f"[Error] {name}: {message}",
+                    f"Traceback:",
+                ]
                 + traceback
-        ))
+            )
+        )
 
 
 class AbortedOutputChunk(TextLnOutputChunk):
@@ -90,34 +103,42 @@ class ImageOutputChunk(OutputChunk):
             fretint = fcntl.ioctl(fd_pty, termios.TIOCGWINSZ, farg)
             rows, cols, xpixels, ypixels = struct.unpack("HHHH", fretint)
 
-            return max(1, xpixels//cols), max(1, ypixels//rows)
+            return max(1, xpixels // cols), max(1, ypixels // rows)
 
-    def place(self, _: MagmaOptions, lineno: int, shape: Tuple[int, int, int, int], canvas: Canvas) -> str:
+    def place(
+        self,
+        _: MagmaOptions,
+        lineno: int,
+        shape: Tuple[int, int, int, int],
+        canvas: Canvas,
+    ) -> str:
         x, y, w, h = shape
 
         xpixels, ypixels = self._get_char_pixelsize()
 
-        max_nlines = max(0, (h-y)-lineno - 1)
-        if ((self.img_width/xpixels)/(self.img_height/ypixels))*max_nlines <= w:
+        max_nlines = max(0, (h - y) - lineno - 1)
+        if ((self.img_width / xpixels) / (self.img_height / ypixels)) * max_nlines <= w:
             nlines = max_nlines
         else:
-            nlines = floor(((self.img_height/ypixels)/(self.img_width/xpixels))*w)
-        nlines = min(nlines, self.img_height//ypixels)
+            nlines = floor(
+                ((self.img_height / ypixels) / (self.img_width / xpixels)) * w
+            )
+        nlines = min(nlines, self.img_height // ypixels)
 
         canvas.add_image(
             self.img_path,
             self.img_checksum,
             x=x,
-            y=y + lineno + 1, # TODO: consider scroll in the display window
+            y=y + lineno + 1,  # TODO: consider scroll in the display window
             width=w,
             height=nlines,
         )
-        return "-\n"*nlines
+        return "-\n" * nlines
 
 
 class OutputStatus(Enum):
-    HOLD         = 0
-    RUNNING      = 1
+    HOLD = 0
+    RUNNING = 1
     DONE = 2
 
 
@@ -157,14 +178,14 @@ def to_outputchunk(alloc_file, data: dict, metadata: dict) -> OutputChunk:
     def _from_image_png(imgdata) -> OutputChunk:
         import base64
 
-        with alloc_file('png', 'wb') as (path, file):
+        with alloc_file("png", "wb") as (path, file):
             file.write(base64.b64decode(str(imgdata)))  # type: ignore
         return _to_image_chunk(path)
 
     def _from_image_svgxml(svg) -> OutputChunk:
         import cairosvg
 
-        with alloc_file('png', 'wb') as (path, file):
+        with alloc_file("png", "wb") as (path, file):
             cairosvg.svg2png(svg, write_to=file)
         return _to_image_chunk(path)
 
@@ -172,16 +193,16 @@ def to_outputchunk(alloc_file, data: dict, metadata: dict) -> OutputChunk:
         from plotly.io import from_json
         import json
 
-        figure = from_json(json.dumps(figure_json)) # type: ignore
+        figure = from_json(json.dumps(figure_json))  # type: ignore
 
-        with alloc_file('png', 'wb') as (path, file):
+        with alloc_file("png", "wb") as (path, file):
             figure.write_image(file, engine="kaleido")
         return _to_image_chunk(path)
 
     def _from_latex(tex) -> OutputChunk:
         from pnglatex import pnglatex
 
-        with alloc_file('png', 'w') as (path, _):
+        with alloc_file("png", "w") as (path, _):
             pass
         pnglatex(tex, path)
         return _to_image_chunk(path)
@@ -190,11 +211,11 @@ def to_outputchunk(alloc_file, data: dict, metadata: dict) -> OutputChunk:
         return TextLnOutputChunk(text)
 
     OUTPUT_CHUNKS = {
-        'image/png': _from_image_png,
-        'image/svg+xml': _from_image_svgxml,
-        'application/vnd.plotly.v1+json': _from_application_plotly,
-        'text/latex': _from_latex,
-        'text/plain': _from_plaintext,
+        "image/png": _from_image_png,
+        "image/svg+xml": _from_image_svgxml,
+        "application/vnd.plotly.v1+json": _from_application_plotly,
+        "text/latex": _from_latex,
+        "text/plain": _from_plaintext,
     }
 
     chunk = None
