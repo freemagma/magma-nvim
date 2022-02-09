@@ -35,7 +35,8 @@ class JupyterRuntime:
 
     options: MagmaOptions
 
-    def __init__(self, kernel_name: str, options: MagmaOptions):
+    def __init__(self, nvim, kernel_name: str, options: MagmaOptions):
+        self.nvim = nvim
         self.state = RuntimeState.STARTING
         self.kernel_name = kernel_name
 
@@ -91,6 +92,11 @@ class JupyterRuntime:
         output.chunks.append(to_outputchunk(self._alloc_file, data, metadata))
 
     def _tick_one(self, output: Output, message_type: str, content: dict) -> bool:
+        self.nvim.api.notify(
+            f"Kernel {kernel_name} received msg {message_type}."
+            pynvim.logging.INFO,
+            {"title": "Magma"},
+        )
         if output._should_clear:
             output.chunks.clear()
             output._should_clear = False

@@ -51,12 +51,7 @@ class MagmaBuffer:
 
         self._doautocmd("MagmaInitPre")
 
-        self.runtime = JupyterRuntime(kernel_name, options)
-        self.nvim.api.notify(
-            "Kernel '%s' is starting." % self.runtime.kernel_name,
-            pynvim.logging.INFO,
-            {"title": "Magma"},
-        )
+        self.runtime = JupyterRuntime(self.nvim, kernel_name, options)
 
         self.outputs = {}
         self.current_output = None
